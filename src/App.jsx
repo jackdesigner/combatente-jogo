@@ -527,7 +527,7 @@ export default function App() {
           image-rendering: crisp-edges;
           margin: 0 auto 16px auto; /* center and space below */
         }
-        #soldado {
+                #soldado {
           width: 100px;
           height: 100px;
           position: absolute;
@@ -538,6 +538,11 @@ export default function App() {
           transition: left 1s linear;
           image-rendering: pixelated;
         }
+        /* Sprite animations */
+        @keyframes anim-idle { from { background-position: 0 0; } to { background-position: -700px 0; } }
+        @keyframes anim-walk { from { background-position: 0 0; } to { background-position: -700px 0; } }
+        @keyframes anim-run  { from { background-position: 0 0; } to { background-position: -800px 0; } }
+
         #soldado.idle { background-image: url('/Idle.png'); animation: anim-idle 1.2s infinite steps(7); }
         #soldado.walk { background-image: url('/Walk.png'); animation: anim-walk 0.8s infinite steps(7); }
         #soldado.run { background-image: url('/Run.png'); animation: anim-run 0.5s infinite steps(8); }
