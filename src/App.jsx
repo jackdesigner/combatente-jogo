@@ -505,9 +505,43 @@ export default function App() {
 
   return (
       <div className="cbt-root">
-        {/* Progress sprite placed below status header */}
+        {/* Sprite demo at very top of the page */}
+        <div id="container-cenario">
+          <div id="soldado" className="idle"></div>
+        </div>
+        {/* Original progress sprite (kept below header) */}
         <ProgressSprite position={game.position} lastRoll={lastRoll} />
       <style>{`
+        /* --- CONTAINER DO CENÁRIO (150px de altura) --- */
+        #container-cenario {
+          width: 800px;
+          height: 150px;
+          border: 4px solid #555;
+          position: relative;
+          overflow: hidden;
+          background-image: url('/sprite-bg.png');
+          background-size: 100% 100%;
+          background-position: bottom center;
+          background-repeat: no-repeat;
+          image-rendering: pixelated;
+          image-rendering: crisp-edges;
+          margin: 0 auto 16px auto; /* center and space below */
+        }
+        #soldado {
+          width: 100px;
+          height: 100px;
+          position: absolute;
+          bottom: 8px;
+          left: 0;
+          background-repeat: no-repeat;
+          background-size: auto 100%;
+          transition: left 1s linear;
+          image-rendering: pixelated;
+        }
+        #soldado.idle { background-image: url('/Idle.png'); animation: anim-idle 1.2s infinite steps(7); }
+        #soldado.walk { background-image: url('/Walk.png'); animation: anim-walk 0.8s infinite steps(7); }
+        #soldado.run { background-image: url('/Run.png'); animation: anim-run 0.5s infinite steps(8); }
+
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Press+Start+2P&display=swap');
 
         .cbt-root {
