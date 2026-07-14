@@ -8,7 +8,7 @@ const START_TILE = 1;
 const QUESTION_TILES = [4, 8, 12, 18, 21, 25, 32, 36];
 const SAVE_KEY = "combatente_save_v1";
 const START_AMMO = 5;
-const START_LIFE = 15;
+const START_LIFE = 45;
 
 const DECK_COMPOSITION = [
   ...Array(6).fill("atirador"),
@@ -51,6 +51,7 @@ function freshGame() {
     revealContext: null,
     battle: null,
     log: ["> Missão iniciada. Escape da área inimiga, fuja para a fronteira."],
+    bleedTurns: 0,
   };
 }
 
@@ -213,8 +214,17 @@ function applyPlayerAttack(g, res) {
 
 function applyEnemyAttack(g, res) {
   let log = [...g.log, `> Inimigo atira: ${res.text}`];
-  let life = res.damage === "INSTA" ? 0 : Math.max(0, g.life - res.damage);
-  let ng = { ...g, life, log };
+  // Handle bleed instead of instant death (HEADSHOT)
+  let life = g.life;
+  let bleedTurns = g.bleedTurns;
+  if (res.damage === "INSTA") {
+    // Apply bleeding for 2 turns instead of instant kill
+    bleedTurns = 2;
+    log.push("> Sangramento iniciado! -2 HP por turno por 2 turnos.");
+  } else {
+    life = Math.max(0, g.life - res.damage);
+  }
+  let ng = { ...g, life, log, bleedTurns };
   if (life <= 0) {
     ng.phase = "fail";
     ng.log = [...ng.log, "> O Combatente foi derrotado."];
@@ -253,6 +263,24 @@ export default function App() {
   const loadedRef = useRef(false);
   const logEndRef = useRef(null);
 
+  // ---------- Bleed helper ----------
+  function applyBleed(g) {
+    if (g.bleedTurns && g.bleedTurns > 0) {
+      const loss = 2;
+      const life = Math.max(0, g.life - loss);
+      const log = [...g.log, `> Sangramento causa -${loss} HP.`];
+      const bleedTurns = g.bleedTurns - 1;
+      let ng = { ...g, life, bleedTurns, log };
+      if (life <= 0 && ng.phase !== "fail") {
+        ng.phase = "fail";
+        ng.log = [...ng.log, "> O Combatente sucumbiu aos ferimentos de sangramento."];
+      }
+      return ng;
+    }
+    return g;
+  }
+
+
   // carregar save
   useEffect(() => {
     try {
@@ -273,6 +301,16 @@ export default function App() {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: "end" });
   }, [game.log]);
+
+  // Turno do inimigo automático com delay
+  useEffect(() => {
+    if (game.phase === "battle" && game.battle?.turn === "enemy" && !rolling) {
+      const timer = setTimeout(() => {
+        enemyAttack();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [game.phase, game.battle?.turn, rolling]);
 
   function newGame() {
     localStorage.removeItem(SAVE_KEY);
@@ -303,7 +341,11 @@ export default function App() {
       const roll = 1 + Math.floor(Math.random() * 6);
       const res = resolveRoll(roll);
       setRollDisplay({ type: "dice", value: roll, coin: res.coin });
-      setGame((g) => applyPlayerAttack(g, res));
+      // Apply attack then bleed effect
+      setGame((g) => {
+        const afterAttack = applyPlayerAttack(g, res);
+        return applyBleed(afterAttack);
+      });
       setRolling(false);
     }, 650);
   }
@@ -315,7 +357,11 @@ export default function App() {
       const roll = 1 + Math.floor(Math.random() * 6);
       const res = resolveRoll(roll);
       setRollDisplay({ type: "dice", value: roll, coin: res.coin });
-      setGame((g) => applyEnemyAttack(g, res));
+      // Apply enemy attack then bleed effect (if any)
+      setGame((g) => {
+        const afterAttack = applyEnemyAttack(g, res);
+        return applyBleed(afterAttack);
+      });
       setRolling(false);
     }, 650);
   }
@@ -369,9 +415,10 @@ export default function App() {
   return (
     <div className="cbt-root">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Press+Start+2P&display=swap');
 
         .cbt-root {
+  font-family: 'Press Start 2P', monospace;
           --bg: #060a06;
           --panel: #0c140c;
           --green: #3dff6e;
@@ -380,13 +427,223 @@ export default function App() {
           --red: #ff4d5e;
           --border: #235a34;
           font-family: 'Share Tech Mono', monospace;
+          font-family: 'Press Start 2P', monospace;
           background: var(--bg);
           color: var(--green);
           min-height: 100vh;
           padding: 16px;
           box-sizing: border-box;
         }
-        .cbt-root * { box-sizing: border-box; }
+        .battle-overlay {
+          position: fixed;
+          inset: 0;
+          background: linear-gradient(180deg, rgba(6,10,6,0.85) 0%, rgba(12,20,12,0.92) 100%), url('/bg-batalha.png') center/cover no-repeat;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          padding: 20px;
+          z-index: 100;
+          font-family: 'Press Start 2P', monospace;
+        }
+        .battle-overlay * { box-sizing: border-box; }
+        .battle-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border-bottom: 2px solid var(--green);
+          padding-bottom: 8px;
+          margin-bottom: 12px;
+        }
+        .battle-title {
+          font-family: 'VT323', monospace;
+          font-size: 28px;
+          color: var(--red);
+          text-shadow: 0 0 8px rgba(255,77,94,0.6);
+        }
+        .battle-hud {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 12px;
+          flex-wrap: wrap;
+        }
+        .battle-hud-panel {
+          background: rgba(12, 20, 12, 0.85);
+          border: 2px solid var(--border);
+          padding: 8px 12px;
+          box-shadow: 0 0 10px rgba(61,255,110,0.15);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 11px;
+        }
+        .cbt-battle-vs {
+          display: flex;
+          justify-content: space-around;
+          align-items: center;
+          margin: 12px 0;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        .cbt-fighter {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          background: rgba(12, 20, 12, 0.75);
+          border: 2px solid var(--border);
+          padding: 12px;
+          border-radius: 4px;
+          min-width: 280px;
+        }
+        .cbt-fighter.enemy {
+          flex-direction: row-reverse;
+          border-color: var(--red);
+        }
+        .cbt-fighter-status {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          flex: 1;
+        }
+        .cbt-fighter-name {
+          font-size: 11px;
+          letter-spacing: 1px;
+          margin-bottom: 2px;
+          color: var(--green);
+        }
+        .cbt-fighter.enemy .cbt-fighter-name {
+          color: var(--red);
+          text-align: right;
+        }
+        .cbt-fighter-sprite {
+          width: 80px;
+          height: 80px;
+          border: 2px solid var(--border);
+          background: rgba(61,255,110,0.05);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          image-rendering: pixelated;
+        }
+        .cbt-fighter.enemy .cbt-fighter-sprite {
+          border-color: var(--red);
+          background: rgba(255,77,94,0.05);
+        }
+        .cbt-fighter-sprite img {
+          max-width: 100%;
+          max-height: 100%;
+        }
+        
+        .battle-log-panel {
+          background: rgba(4, 8, 4, 0.9);
+          border: 2px dashed var(--border);
+          padding: 10px;
+          height: 85px;
+          overflow-y: auto;
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 13px;
+          color: var(--green-dim);
+          margin-bottom: 12px;
+          text-align: left;
+        }
+        .battle-log-line {
+          margin-bottom: 3px;
+        }
+        .battle-log-line.active {
+          color: var(--green);
+        }
+        .battle-log-line.enemy {
+          color: var(--red);
+        }
+        .battle-log-line.alert {
+          color: var(--amber);
+        }
+        
+        .battle-deck-area {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          background: rgba(12, 20, 12, 0.85);
+          border: 2px solid var(--border);
+          padding: 12px;
+          margin-top: auto;
+          flex-wrap: wrap;
+        }
+        .cards-container {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .pixel-card {
+          width: 72px;
+          height: 100px;
+          border: 2px solid var(--border);
+          border-radius: 4px;
+          position: relative;
+          cursor: pointer;
+          transition: transform 0.2s, box-shadow 0.2s;
+          background-size: cover;
+          background-position: center;
+          image-rendering: pixelated;
+        }
+        .pixel-card:hover:not(.disabled) {
+          transform: translateY(-6px);
+          box-shadow: 0 4px 8px rgba(61,255,110,0.4);
+          border-color: var(--green);
+        }
+        .pixel-card.disabled {
+          opacity: 0.3;
+          cursor: not-allowed;
+          filter: grayscale(1);
+          border-color: #2b2b2b;
+        }
+        .pixel-card-qty {
+          position: absolute;
+          top: -4px;
+          right: -4px;
+          background: var(--amber);
+          color: #000;
+          font-size: 8px;
+          font-weight: bold;
+          padding: 1px 4px;
+          border: 1.5px solid #000;
+          border-radius: 3px;
+        }
+        .deck-card {
+          width: 72px;
+          height: 100px;
+          border: 2px solid var(--border);
+          border-radius: 4px;
+          background: url('/card-verse.png') center/cover no-repeat;
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          image-rendering: pixelated;
+          box-shadow: 3px 3px 0px rgba(0,0,0,0.5);
+        }
+        .deck-card-count {
+          background: rgba(0,0,0,0.85);
+          color: var(--amber);
+          font-size: 8px;
+          padding: 2px 4px;
+          border: 1px solid var(--amber);
+          border-radius: 2px;
+          text-align: center;
+        }
+        .battle-actions-hud {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          align-items: flex-end;
+        }
+        .cbt-status-bar-container {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 9px;
+        }
         .cbt-scanlines {
           position: relative;
         }
@@ -776,63 +1033,10 @@ export default function App() {
 
         {/* BATALHA */}
         {game.phase === "battle" && (
-          <div className="cbt-panel cbt-scanlines">
-            <span className="cbt-panel-label">
-              {game.battle.isGate ? `COMBATE DE CHEFE — INIMIGO ${game.battle.enemyIndex + 1}/${game.battle.enemies.length}` : "COMBATE"}
-            </span>
-
-            <div className="cbt-battle-vs">
-              <div className="cbt-combatant">
-                <div className="cbt-combatant-label">VOCÊ</div>
-                <div className="cbt-bar-outer">
-                  <div className={`cbt-bar-inner ${game.life <= 5 ? "danger" : ""}`} style={{ width: `${(game.life / game.lifeCap) * 100}%` }} />
-                </div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>{game.life}/{game.lifeCap} HP</div>
-              </div>
-              <div className="cbt-combatant">
-                <div className="cbt-combatant-label">INIMIGO</div>
-                <div className="cbt-bar-outer">
-                  <div className="cbt-bar-inner danger" style={{ width: `${(game.battle.enemyHP / 15) * 100}%` }} />
-                </div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>{game.battle.enemyHP}/15 HP</div>
-              </div>
-            </div>
-
-            <div className="cbt-turn-flag">{game.battle.turn === "player" ? "▶ SEU TURNO" : "▶ TURNO DO INIMIGO"}</div>
-
-            <div className="cbt-roll-indicator">
-              {rolling
-                ? "rolando..."
-                : rollDisplay?.type === "dice"
-                ? `🎲 ${rollDisplay.value}${rollDisplay.coin ? ` · 🪙 ${rollDisplay.coin}` : ""}`
-                : ""}
-            </div>
-
-            {game.battle.turn === "player" ? (
-              <div className="cbt-actions">
-                <button className="cbt-btn" onClick={playerAttack} disabled={rolling}>
-                  <Crosshair size={16} /> ATIRAR (-1 munição)
-                </button>
-                <button className="cbt-btn" onClick={useSocorro} disabled={rolling || game.inventory.socorro <= 0 || game.battle.usedSocorro}>
-                  <Syringe size={16} /> SOCORRO (+3 vida)
-                </button>
-                <button className="cbt-btn amber" onClick={useMunicao} disabled={rolling || game.inventory.municao <= 0 || game.battle.usedMunicao}>
-                  <Package size={16} /> MUNIÇÃO (+3 tiros)
-                </button>
-                <button className="cbt-btn red" onClick={useGranada} disabled={rolling || game.inventory.granada <= 0}>
-                  <Bomb size={16} /> GRANADA
-                </button>
-              </div>
-            ) : (
-              <div className="cbt-actions">
-                <button className="cbt-btn red" onClick={enemyAttack} disabled={rolling}>
-                  <Crosshair size={16} /> INIMIGO ATACA
-                </button>
-              </div>
-            )}
-          </div>
+            <BattleOverlay game={game} setGame={setGame} playerAttack={playerAttack} enemyAttack={enemyAttack} useGranada={useGranada} useMunicao={useMunicao} useSocorro={useSocorro} useAdrenalina={useAdrenalina} rolling={rolling} rollDisplay={rollDisplay} />
         )}
 
+            
         {/* FIM DE JOGO */}
         {(game.phase === "win" || game.phase === "fail") && (
           <div className="cbt-panel cbt-scanlines cbt-end-screen">
@@ -862,3 +1066,194 @@ export default function App() {
     </div>
   );
 }
+
+// ---------- BattleOverlay Component ----------
+function BattleOverlay({ game, setGame, playerAttack, enemyAttack, useGranada, useMunicao, useSocorro, useAdrenalina, rolling, rollDisplay }) {
+  const isPlayerTurn = game.battle.turn === "player";
+  const enemiesLeft = game.battle.enemies.length - game.battle.enemyIndex;
+  
+  // Get last 4 lines of battle log for narrative
+  const battleLogs = game.log.slice(-4).map((line, idx) => {
+    let cls = "battle-log-line";
+    if (line.includes("Você") || line.includes("coletado")) cls += " active";
+    else if (line.includes("Inimigo") || line.includes("Sangramento") || line.includes("derrotado")) cls += " enemy";
+    else if (line.includes("🎲") || line.includes("Dado")) cls += " alert";
+    return (
+      <div key={idx} className={cls}>
+        {line}
+      </div>
+    );
+  });
+
+  return (
+    <div className="battle-overlay cbt-scanlines">
+      {/* Header */}
+      <div className="battle-header">
+        <div className="battle-title">CONFRONTO</div>
+        <div style={{ fontSize: '10px', color: 'var(--green-dim)' }}>
+          INIMIGOS RESTANTES: {enemiesLeft}
+        </div>
+      </div>
+
+      {/* Top HUD */}
+      <div className="battle-hud">
+        <div className="battle-hud-panel">
+          <Heart size={14} color="var(--red)" />
+          <span>HP: {game.life}/{game.lifeCap}</span>
+        </div>
+        <div className="battle-hud-panel">
+          <Crosshair size={14} color="var(--amber)" />
+          <span>MUNIÇÃO: {game.ammo}</span>
+        </div>
+        {game.bleedTurns > 0 && (
+          <div className="battle-hud-panel" style={{ borderColor: 'var(--red)', color: 'var(--red)' }}>
+            <span>🩸 SANGRAMENTO ({game.bleedTurns}T)</span>
+          </div>
+        )}
+      </div>
+
+      {/* VS Arena */}
+      <div className="cbt-battle-vs">
+        {/* Combatant (Left) */}
+        <div className="cbt-fighter">
+          <div className="cbt-fighter-status">
+            <div className="cbt-fighter-name">SOLDADO (VOCÊ)</div>
+            {/* Health Bar next to sprite */}
+            <div className="cbt-status-bar-container">
+              <span>HP</span>
+              <div className="cbt-bar-outer" style={{ height: '10px' }}>
+                <div className={`cbt-bar-inner ${game.life <= 10 ? "danger" : ""}`} style={{ width: `${(game.life / game.lifeCap) * 100}%` }} />
+              </div>
+            </div>
+            <div style={{ fontSize: '9px', color: 'var(--green-dim)' }}>HP: {game.life} / {game.lifeCap}</div>
+          </div>
+          <div className="cbt-fighter-sprite">
+            <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg viewBox="0 0 24 24" width="40" height="40" stroke="var(--green)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                <circle cx="12" cy="11" r="3" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* VS Label */}
+        <div style={{ fontSize: '18px', color: 'var(--red)', fontWeight: 'bold', textShadow: '0 0 8px rgba(255,0,0,0.5)' }}>VS</div>
+
+        {/* Enemy (Right) */}
+        <div className="cbt-fighter enemy">
+          <div className="cbt-fighter-status">
+            <div className="cbt-fighter-name">ATIRADOR INIMIGO</div>
+            {/* Health Bar next to sprite */}
+            <div className="cbt-status-bar-container" style={{ flexDirection: 'row-reverse' }}>
+              <span>HP</span>
+              <div className="cbt-bar-outer" style={{ height: '10px' }}>
+                <div className="cbt-bar-inner danger" style={{ width: `${(game.battle.enemyHP / 15) * 100}%` }} />
+              </div>
+            </div>
+            <div style={{ fontSize: '9px', color: 'var(--red)', textAlign: 'right' }}>HP: {game.battle.enemyHP} / 15</div>
+          </div>
+          <div className="cbt-fighter-sprite">
+            <img src="/sprite-inimigo.png" alt="Inimigo" onError={(e) => { e.target.style.display = 'none'; }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Narrative Panel */}
+      <div className="battle-log-panel">
+        {battleLogs}
+      </div>
+
+      {/* Cards and Deck Area */}
+      <div className="battle-deck-area">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ fontSize: '9px', color: 'var(--green-dim)', letterSpacing: '1px' }}>SUAS CARTAS:</div>
+          <div className="cards-container">
+            {/* Granada Card */}
+            <div 
+              className={`pixel-card ${game.inventory.granada <= 0 || !isPlayerTurn || rolling ? "disabled" : ""}`}
+              style={{ backgroundImage: "url('/card-granada.png')" }}
+              onClick={() => { if (game.inventory.granada > 0 && isPlayerTurn && !rolling) useGranada(); }}
+              title="Jogar Granada"
+            >
+              <div className="pixel-card-qty">x{game.inventory.granada}</div>
+            </div>
+
+            {/* Municao Card */}
+            <div 
+              className={`pixel-card ${game.inventory.municao <= 0 || !isPlayerTurn || game.battle.usedMunicao || rolling ? "disabled" : ""}`}
+              style={{ backgroundImage: "url('/card-municao.png')" }}
+              onClick={() => { if (game.inventory.municao > 0 && isPlayerTurn && !game.battle.usedMunicao && !rolling) useMunicao(); }}
+              title="Recarregar Munição"
+            >
+              <div className="pixel-card-qty">x{game.inventory.municao}</div>
+            </div>
+
+            {/* Socorro Card */}
+            <div 
+              className={`pixel-card ${game.inventory.socorro <= 0 || !isPlayerTurn || game.battle.usedSocorro || rolling ? "disabled" : ""}`}
+              style={{ backgroundImage: "url('/card-socorros.png')" }}
+              onClick={() => { if (game.inventory.socorro > 0 && isPlayerTurn && !game.battle.usedSocorro && !rolling) useSocorro(); }}
+              title="Usar Kit Primeiros Socorros"
+            >
+              <div className="pixel-card-qty">x{game.inventory.socorro}</div>
+            </div>
+
+            {/* Adrenalina Card */}
+            <div 
+              className={`pixel-card ${game.inventory.adrenalina <= 0 || !isPlayerTurn || rolling ? "disabled" : ""}`}
+              style={{ backgroundImage: "url('/card-adrenalina.png')" }}
+              onClick={() => { if (game.inventory.adrenalina > 0 && isPlayerTurn && !rolling) useAdrenalina(); }}
+              title="Usar Adrenalina"
+            >
+              <div className="pixel-card-qty">x{game.inventory.adrenalina}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Deck */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+          <div style={{ fontSize: '9px', color: 'var(--green-dim)' }}>DECK</div>
+          <div className="deck-card">
+            <div className="deck-card-count">{(game.deck.length - game.deckPos)}</div>
+          </div>
+        </div>
+
+        {/* Action HUD / Shoot Button */}
+        <div className="battle-actions-hud">
+          {isPlayerTurn ? (
+            <>
+              <button 
+                className="cbt-btn red" 
+                style={{ padding: '12px 20px', fontSize: '11px', fontWeight: 'bold' }} 
+                onClick={playerAttack} 
+                disabled={rolling}
+              >
+                ATIRAR (-1 munição)
+              </button>
+              <div style={{ fontSize: '9px', color: 'var(--amber)', marginTop: '4px' }}>◀ SEU TURNO</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: '9px', color: 'var(--red)', animation: 'pulse 1.2s infinite' }}>INIMIGO ATACANDO...</div>
+              <style>{`
+                @keyframes pulse {
+                  0% { opacity: 0.4; }
+                  50% { opacity: 1; }
+                  100% { opacity: 0.4; }
+                }
+              `}</style>
+            </>
+          )}
+          
+          {/* Roll Display Indicator */}
+          <div style={{ minHeight: '20px', marginTop: '6px', fontSize: '10px', color: 'var(--amber)' }}>
+            {rolling ? "Rolar dado..." : rollDisplay?.value ? `🎲 ${rollDisplay.value}${rollDisplay.coin ? ` · 🪙 ${rollDisplay.coin}` : ""}` : ""}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
