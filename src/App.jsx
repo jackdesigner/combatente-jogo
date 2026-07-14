@@ -437,12 +437,27 @@ export default function App() {
         .battle-overlay {
           position: fixed;
           inset: 0;
-          background: linear-gradient(180deg, rgba(6,10,6,0.85) 0%, rgba(12,20,12,0.92) 100%), url('/bg-batalha.png') center/cover no-repeat;
+          background: rgba(0, 0, 0, 0.85);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 200;
+          padding: 16px;
+        }
+        .battle-board {
+          width: 100%;
+          max-width: 900px;
+          height: 100%;
+          max-height: 560px;
+          background: linear-gradient(180deg, rgba(6,10,6,0.55) 0%, rgba(12,20,12,0.75) 100%), url('/bg-batalha.png') center/100% 100% no-repeat;
+          background-color: #0c140c;
+          border: 4px solid var(--border);
+          box-shadow: 0 0 40px rgba(61,255,110,0.3);
           display: flex;
           flex-direction: column;
           justify-content: space-between;
           padding: 20px;
-          z-index: 100;
+          position: relative;
           font-family: 'Press Start 2P', monospace;
         }
         .battle-overlay * { box-sizing: border-box; }
@@ -1086,7 +1101,8 @@ function BattleOverlay({ game, setGame, playerAttack, enemyAttack, useGranada, u
   });
 
   return (
-    <div className="battle-overlay cbt-scanlines">
+    <div className="battle-overlay">
+      <div className="battle-board cbt-scanlines">
       {/* Header */}
       <div className="battle-header">
         <div className="battle-title">CONFRONTO</div>
@@ -1253,6 +1269,7 @@ function BattleOverlay({ game, setGame, playerAttack, enemyAttack, useGranada, u
         </div>
       </div>
     </div>
+  </div>
   );
 }
 
