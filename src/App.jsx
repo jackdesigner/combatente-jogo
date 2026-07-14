@@ -8,7 +8,7 @@ const START_TILE = 1;
 const QUESTION_TILES = [4, 8, 12, 18, 21, 25, 32, 36];
 const SAVE_KEY = "combatente_save_v1";
 const START_AMMO = 12;
-const START_LIFE = 45;
+const START_LIFE = 50;
 
 const DECK_COMPOSITION = [
   ...Array(6).fill("atirador"),
@@ -52,6 +52,7 @@ function freshGame() {
     battle: null,
     log: ["> Missão iniciada. Escape da área inimiga, fuja para a fronteira."],
     bleedTurns: 0,
+    canPlayCard: false,
   };
 }
 
@@ -126,6 +127,7 @@ function stepMovement(g, roll) {
     ng.log = [...ng.log, "> Casa misteriosa revelada!"];
     return ng;
   }
+  ng.canPlayCard = true;
   return ng;
 }
 
@@ -423,9 +425,9 @@ export default function App() {
     if (game.phase !== "battle" || game.battle.turn !== "player") return;
     if (game.inventory.socorro <= 0 || game.battle.usedSocorro) return;
     setGame((g) => {
-      const life = Math.min(g.lifeCap, g.life + 3);
+      const life = Math.min(g.lifeCap, g.life + 15);
       const inventory = { ...g.inventory, socorro: g.inventory.socorro - 1 };
-      const log = [...g.log, "> Você usa Primeiros-Socorros (+3 vida). Turno perdido."];
+      const log = [...g.log, "> Você usa Primeiros-Socorros (+15 vida). Turno perdido."];
       return { ...g, life, inventory, log, battle: { ...g.battle, usedSocorro: true, turn: "enemy" } };
     });
   }
@@ -453,15 +455,24 @@ export default function App() {
       setRolling(false);
     }, 650);
   }
-
+function playCardFromMap() {
+  if (game.phase !== "map" || !game.canPlayCard || rolling) return;
+  const draw = drawFromDeck(game);
+  if (!draw.card) return;
+  const coin = Math.random() < 0.5 ? "cara" : "coroa";
+  setGame(g => {
+    const after = startBattleFromCard(g, draw.card, "field", coin);
+    return { ...after, canPlayCard: false };
+  });
+}
   function useAdrenalina() {
     // Adrenalina can be used both in battle and on the map (common tiles)
   if (game.inventory.adrenalina <= 0) return;
   if (game.phase !== "battle" && game.phase !== "map") return;
     setGame((g) => {
       const inventory = { ...g.inventory, adrenalina: g.inventory.adrenalina - 1 };
-      const log = [...g.log, "> Adrenalina aplicada! Vida restaurada para 45."];
-      return { ...g, inventory, life: 45, lifeCap: 45, log };
+      const log = [...g.log, "> Adrenalina aplicada! Vida restaurada para 50."];
+      return { ...g, inventory, life: 50, lifeCap: 50, log };
     });
   }
 
@@ -1115,6 +1126,7 @@ export default function App() {
                 <button className="cbt-btn" onClick={rollMove} disabled={rolling}>
                   <Dices size={16} className={rolling ? "cbt-rolling" : ""} /> ROLAR DADO
                 </button>
+<button className="cbt-btn amber" onClick={playCardFromMap} disabled={rolling || !game.canPlayCard}>USAR CARTA</button>
                 <div className="cbt-roll-indicator">
                   {rolling ? "rolando..." : rollDisplay?.type === "dice" ? `🎲 ${rollDisplay.value}` : ""}
                 </div>
