@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Heart, Crosshair, Package, Syringe, Bomb, Zap, Dices, RotateCcw } from "lucide-react";
+import AudioManager from "./audioManager";
 
 // ============ CONFIG DO JOGO ============
 const FINAL_TILE = 40;
@@ -393,6 +394,7 @@ export default function App() {
   function playerAttack() {
     if (game.phase !== "battle" || game.battle.turn !== "player" || rolling) return;
     setRolling(true);
+    AudioManager.getInstance().playSfx('tiro-curto');
     setTimeout(() => {
       const roll = 1 + Math.floor(Math.random() * 6);
       const res = resolveRoll(roll);
