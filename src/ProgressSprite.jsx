@@ -1,8 +1,8 @@
 import React from "react";
-import idleImg from "../Idle.png";
-import walkImg from "../Walk.png";
-import runImg from "../Run.png";
-import bgImg from "../sprite-bg.png";
+const idleImg = "/Idle.png";
+const walkImg = "/Walk.png";
+const runImg = "/Run.png";
+const bgImg = "/sprite-bg.png";
 
 /**
  * ProgressSprite component displays the animated soldier over the static background
