@@ -53,6 +53,7 @@ function freshGame() {
     log: ["> Missão iniciada. Escape da área inimiga, fuja para a fronteira."],
     bleedTurns: 0,
     canPlayCard: false,
+    showMapCardPicker: false,
   };
 }
 
@@ -455,20 +456,34 @@ export default function App() {
       setRolling(false);
     }, 650);
   }
-function playCardFromMap() {
-  if (game.phase !== "map" || !game.canPlayCard || rolling) return;
-  const draw = drawFromDeck(game);
-  if (!draw.card) return;
-  const coin = Math.random() < 0.5 ? "cara" : "coroa";
-  setGame(g => {
-    const after = startBattleFromCard(g, draw.card, "field", coin);
-    return { ...after, canPlayCard: false };
-  });
-}
+
+  function playCardFromMap() {
+    if (game.phase !== "map" || !game.canPlayCard || rolling) return;
+    setGame(g => ({ ...g, showMapCardPicker: true }));
+  }
+
+  function pickMapCard(item) {
+    if (game.inventory[item] <= 0) return;
+    setGame(g => {
+      const inventory = { ...g.inventory, [item]: g.inventory[item] - 1 };
+      let log = [...g.log, `> Usou ${CARD_INFO[item].label} no mapa.`];
+      let ng = { ...g, inventory, showMapCardPicker: false, log };
+      
+      if (item === 'adrenalina') {
+        ng.life = 50;
+        ng.lifeCap = 50;
+      } else if (item === 'socorro') {
+        ng.life = Math.min(ng.lifeCap, ng.life + 15);
+      } else if (item === 'municao') {
+        ng.ammo += 3;
+      }
+      return ng;
+    });
+  }
+
   function useAdrenalina() {
-    // Adrenalina can be used both in battle and on the map (common tiles)
-  if (game.inventory.adrenalina <= 0) return;
-  if (game.phase !== "battle" && game.phase !== "map") return;
+    if (game.inventory.adrenalina <= 0) return;
+    if (game.phase !== "battle" && game.phase !== "map") return;
     setGame((g) => {
       const inventory = { ...g.inventory, adrenalina: g.inventory.adrenalina - 1 };
       const log = [...g.log, "> Adrenalina aplicada! Vida restaurada para 50."];
