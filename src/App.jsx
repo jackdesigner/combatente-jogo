@@ -269,6 +269,7 @@ export default function App() {
   const [rolling, setRolling] = useState(false);
   const [rollDisplay, setRollDisplay] = useState(null);
   const [lastRoll, setLastRoll] = useState(0);
+  const [isMoving, setIsMoving] = useState(false);
   const loadedRef = useRef(false);
   const logEndRef = useRef(null);
   const mapAudioRef = useRef(null);
@@ -324,12 +325,14 @@ export default function App() {
     const pct = ((pos - 1) / (totalTiles - 1)) * 100;
     const left = `calc(${pct}% - 50px)`; // center 100px sprite
     soldadoRef.current.style.left = left;
-    // Choose animation based on last roll
+    // Choose animation based on movement state
     let animClass = "idle";
-    if (lastRoll >= 4) animClass = "run";
-    else if (lastRoll > 0) animClass = "walk";
+    if (isMoving) {
+      if (lastRoll >= 4) animClass = "run";
+      else animClass = "walk";
+    }
     soldadoRef.current.className = animClass;
-  }, [game.position, lastRoll]);
+  }, [game.position, lastRoll, isMoving]);
 
   // Música de fundo: mapa vs batalha
   useEffect(() => {
@@ -406,6 +409,9 @@ export default function App() {
       setRollDisplay({ type: "dice", value: roll });
       setGame((g) => stepMovement(g, roll));
       setLastRoll(roll);
+      setIsMoving(true);
+      // Reset to idle after movement animation (~1s)
+      setTimeout(() => setIsMoving(false), 1100);
       setRolling(false);
     }, 650);
   }
@@ -521,14 +527,24 @@ export default function App() {
   const cardsLeft = game.deck.length - game.deckPos;
 
   return (
-      <div className="cbt-root">
-        {/* Sprite demo at very top of the page */}
+    <div className="cbt-wrapper">
+      <div className="main-content">
         <div id="container-cenario">
           <div id="soldado" ref={soldadoRef} className="idle"></div>
         </div>
-        {/* Original progress sprite (kept below header) */}
-        {/* ProgressSprite removed – demo sprite displayed above */}
-      <style>{`
+      </div>
+      <aside className="log-panel">
+        <h3 className="log-title">Histórico</h3>
+        <div className="log-contents">
+          {game.log.map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </div>
+      </aside>
+    </div>
+  );
+
+  <style>{`
         /* --- CONTAINER DO CENÁRIO (150px de altura) --- */
         #container-cenario {
           width: 800px;
@@ -566,8 +582,7 @@ export default function App() {
 
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Press+Start+2P&display=swap');
 
-        .cbt-root {
-  font-family: 'Press Start 2P', monospace;
+        .main-content {
           --bg: #060a06;
           --panel: #0c140c;
           --green: #3dff6e;
@@ -576,13 +591,26 @@ export default function App() {
           --red: #ff4d5e;
           --border: #235a34;
           font-family: 'Share Tech Mono', monospace;
-          font-family: 'Press Start 2P', monospace;
           background: var(--bg);
           color: var(--green);
-          min-height: 100vh;
+          flex: 1;
           padding: 16px;
-          box-sizing: border-box;
         }
+
+        .cbt-wrapper {
+          display: flex;
+          height: 100vh;
+          overflow: hidden;
+        }
+
+        .log-panel {
+          width: 300px;
+          background: var(--panel);
+          border-left: 2px solid var(--border);
+          display: flex;
+          flex-direction: column;
+        }
+
         .battle-overlay {
           position: fixed;
           inset: 0;
@@ -607,7 +635,7 @@ export default function App() {
           position: relative;
           font-family: 'Press Start 2P', monospace;
         }
-        .battle-overlay * { box-sizing: border-box; }
+        .main-content * { box-sizing: border-box; }
         .battle-header {
           display: flex;
           justify-content: space-between;
