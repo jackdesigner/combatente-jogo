@@ -455,7 +455,9 @@ export default function App() {
   }
 
   function useAdrenalina() {
-    if (game.inventory.adrenalina <= 0) return;
+    // Adrenalina can be used both in battle and on the map (common tiles)
+  if (game.inventory.adrenalina <= 0) return;
+  if (game.phase !== "battle" && game.phase !== "map") return;
     setGame((g) => {
       const inventory = { ...g.inventory, adrenalina: g.inventory.adrenalina - 1 };
       const log = [...g.log, "> Adrenalina aplicada! Vida restaurada para 45."];
