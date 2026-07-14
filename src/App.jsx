@@ -7,7 +7,7 @@ const WARNING_TILE = 39;
 const START_TILE = 1;
 const QUESTION_TILES = [4, 8, 12, 18, 21, 25, 32, 36];
 const SAVE_KEY = "combatente_save_v1";
-const START_AMMO = 5;
+const START_AMMO = 12;
 const START_LIFE = 45;
 
 const DECK_COMPOSITION = [
@@ -262,6 +262,8 @@ export default function App() {
   const [rollDisplay, setRollDisplay] = useState(null);
   const loadedRef = useRef(false);
   const logEndRef = useRef(null);
+  const mapAudioRef = useRef(null);
+  const battleAudioRef = useRef(null);
 
   // ---------- Bleed helper ----------
   function applyBleed(g) {
@@ -301,6 +303,57 @@ export default function App() {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: "end" });
   }, [game.log]);
+
+  // Música de fundo: mapa vs batalha
+  useEffect(() => {
+    // Cria os elementos de áudio uma vez
+    if (!mapAudioRef.current) {
+      mapAudioRef.current = new Audio('/map-music.mp3');
+      mapAudioRef.current.loop = true;
+      mapAudioRef.current.volume = 0;
+    }
+    if (!battleAudioRef.current) {
+      battleAudioRef.current = new Audio('/battle-music.mp3');
+      battleAudioRef.current.loop = true;
+      battleAudioRef.current.volume = 0;
+    }
+
+    const isBattle = game.phase === 'battle';
+    const fadeIn  = isBattle ? battleAudioRef.current : mapAudioRef.current;
+    const fadeOut = isBattle ? mapAudioRef.current    : battleAudioRef.current;
+
+    // Fade out da faixa atual
+    const STEP = 0.05;
+    const INTERVAL = 60;
+    const fadeOutInterval = setInterval(() => {
+      if (fadeOut.volume > STEP) {
+        fadeOut.volume = Math.max(0, fadeOut.volume - STEP);
+      } else {
+        fadeOut.volume = 0;
+        fadeOut.pause();
+        clearInterval(fadeOutInterval);
+      }
+    }, INTERVAL);
+
+    // Fade in da nova faixa
+    if (fadeIn.paused) {
+      fadeIn.currentTime = fadeIn.currentTime || 0;
+      fadeIn.play().catch(() => {}); // ignora erros de autoplay
+    }
+    const fadeInInterval = setInterval(() => {
+      if (fadeIn.volume < 1 - STEP) {
+        fadeIn.volume = Math.min(1, fadeIn.volume + STEP);
+      } else {
+        fadeIn.volume = 1;
+        clearInterval(fadeInInterval);
+      }
+    }, INTERVAL);
+
+    return () => {
+      clearInterval(fadeOutInterval);
+      clearInterval(fadeInInterval);
+    };
+  }, [game.phase]);
 
   // Turno do inimigo automático com delay
   useEffect(() => {
@@ -1181,29 +1234,6 @@ function BattleOverlay({ game, setGame, playerAttack, enemyAttack, useGranada, u
         <div className="battle-main-layout">
           {/* Combat Scene with bg photo background */}
           <div className="battle-scene">
-            <div className="battle-scene-sprites">
-              {/* Combatant (Left) */}
-              <div className="battle-sprite-box player">
-                <div className="cbt-fighter-sprite">
-                  <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg viewBox="0 0 24 24" width="40" height="40" stroke="var(--green)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      <circle cx="12" cy="11" r="3" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              {/* VS Label */}
-              <div style={{ fontSize: '18px', color: 'var(--red)', fontWeight: 'bold', textShadow: '0 0 8px rgba(255,0,0,0.7)' }}>VS</div>
-
-              {/* Enemy (Right) */}
-              <div className="battle-sprite-box enemy">
-                <div className="cbt-fighter-sprite">
-                  <img src="/sprite-inimigo.png" alt="Inimigo" onError={(e) => { e.target.style.display = 'none'; }} />
-                </div>
-              </div>
-            </div>
 
             {/* Overlaid Status Bars at the bottom of the photo */}
             <div className="battle-scene-status-row">
