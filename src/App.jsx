@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import ProgressSprite from "./ProgressSprite";
+import "./ProgressSprite.css";
 import { Heart, Crosshair, Package, Syringe, Bomb, Zap, Dices, RotateCcw } from "lucide-react";
 import AudioManager from "./audioManager";
 
@@ -266,6 +268,7 @@ export default function App() {
   const [game, setGame] = useState(freshGame());
   const [rolling, setRolling] = useState(false);
   const [rollDisplay, setRollDisplay] = useState(null);
+  const [lastRoll, setLastRoll] = useState(0);
   const loadedRef = useRef(false);
   const logEndRef = useRef(null);
   const mapAudioRef = useRef(null);
@@ -385,6 +388,7 @@ export default function App() {
       const roll = 1 + Math.floor(Math.random() * 6);
       setRollDisplay({ type: "dice", value: roll });
       setGame((g) => stepMovement(g, roll));
+      setLastRoll(roll);
       setRolling(false);
     }, 650);
   }
@@ -500,7 +504,11 @@ export default function App() {
   const cardsLeft = game.deck.length - game.deckPos;
 
   return (
-    <div className="cbt-root">
+      <div className="cbt-root">
+        {/* Progress sprite placed below status header */}
+        {game.phase === "map" && (
+          <ProgressSprite position={game.position} lastRoll={lastRoll} />
+        )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Press+Start+2P&display=swap');
 
