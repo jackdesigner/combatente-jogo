@@ -506,9 +506,7 @@ export default function App() {
   return (
       <div className="cbt-root">
         {/* Progress sprite placed below status header */}
-        {game.phase === "map" && (
-          <ProgressSprite position={game.position} lastRoll={lastRoll} />
-        )}
+        <ProgressSprite position={game.position} lastRoll={lastRoll} />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Press+Start+2P&display=swap');
 
