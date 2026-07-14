@@ -269,7 +269,6 @@ export default function App() {
   const [rolling, setRolling] = useState(false);
   const [rollDisplay, setRollDisplay] = useState(null);
   const [lastRoll, setLastRoll] = useState(0);
-  const [isMoving, setIsMoving] = useState(false);
   const loadedRef = useRef(false);
   const logEndRef = useRef(null);
   const mapAudioRef = useRef(null);
@@ -325,14 +324,12 @@ export default function App() {
     const pct = ((pos - 1) / (totalTiles - 1)) * 100;
     const left = `calc(${pct}% - 50px)`; // center 100px sprite
     soldadoRef.current.style.left = left;
-    // Choose animation based on movement state
+    // Choose animation based on last roll
     let animClass = "idle";
-    if (isMoving) {
-      if (lastRoll >= 4) animClass = "run";
-      else animClass = "walk";
-    }
+    if (lastRoll >= 4) animClass = "run";
+    else if (lastRoll > 0) animClass = "walk";
     soldadoRef.current.className = animClass;
-  }, [game.position, lastRoll, isMoving]);
+  }, [game.position, lastRoll]);
 
   // Música de fundo: mapa vs batalha
   useEffect(() => {
@@ -409,9 +406,6 @@ export default function App() {
       setRollDisplay({ type: "dice", value: roll });
       setGame((g) => stepMovement(g, roll));
       setLastRoll(roll);
-      setIsMoving(true);
-      // Reset to idle after movement animation (~1s)
-      setTimeout(() => setIsMoving(false), 1100);
       setRolling(false);
     }, 650);
   }
@@ -527,52 +521,53 @@ export default function App() {
   const cardsLeft = game.deck.length - game.deckPos;
 
   return (
-    <div className="cbt-wrapper">
-      <div className="main-content">
+      <div className="cbt-root">
+        {/* Sprite demo at very top of the page */}
         <div id="container-cenario">
           <div id="soldado" ref={soldadoRef} className="idle"></div>
         </div>
-      </div>
-      <aside className="log-panel">
-        <h3 className="log-title">Histórico</h3>
-        <div className="log-contents">
-          {game.log.map((line, i) => (
-            <p key={i}>{line}</p>
-          ))}
-        </div>
-      </aside>
-    </div>
-    <style>{`
-    /* --- CONTAINER DO CENÁRIO (150px de altura) --- */
-    #container-cenario {
-      width: 800px;
-      height: 150px;
-      border: 4px solid #555;
-      position: relative;
-      overflow: hidden;
-      background-image: url('/sprite-bg.png');
-      background-size: 100% 100%;
-      background-position: bottom center;
-      background-repeat: no-repeat;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-      margin: 0 auto 16px auto; /* center and space below */
-    }
-    #soldado {
-      width: 100px;
-      height: 100px;
-      position: absolute;
-      bottom: 8px;
-      left: 0;
-      background-repeat: no-repeat;
-      background-size: auto 100%;
-      transition: left 1s linear;
-      image-rendering: pixelated;
-    }
-    /* Sprite animations */
+        {/* Original progress sprite (kept below header) */}
+        {/* ProgressSprite removed – demo sprite displayed above */}
+      <style>{`
+        /* --- CONTAINER DO CENÁRIO (150px de altura) --- */
+        #container-cenario {
+          width: 800px;
+          height: 150px;
+          border: 4px solid #555;
+          position: relative;
+          overflow: hidden;
+          background-image: url('/sprite-bg.png');
+          background-size: 100% 100%;
+          background-position: bottom center;
+          background-repeat: no-repeat;
+          image-rendering: pixelated;
+          image-rendering: crisp-edges;
+          margin: 0 auto 16px auto; /* center and space below */
+        }
+                #soldado {
+          width: 100px;
+          height: 100px;
+          position: absolute;
+          bottom: 8px;
+          left: 0;
+          background-repeat: no-repeat;
+          background-size: auto 100%;
+          transition: left 1s linear;
+          image-rendering: pixelated;
+        }
+        /* Sprite animations */
+        @keyframes anim-idle { from { background-position: 0 0; } to { background-position: -700px 0; } }
+        @keyframes anim-walk { from { background-position: 0 0; } to { background-position: -700px 0; } }
+        @keyframes anim-run  { from { background-position: 0 0; } to { background-position: -800px 0; } }
+
+        #soldado.idle { background-image: url('/Idle.png'); animation: anim-idle 1.2s infinite steps(7); }
+        #soldado.walk { background-image: url('/Walk.png'); animation: anim-walk 0.8s infinite steps(7); }
+        #soldado.run { background-image: url('/Run.png'); animation: anim-run 0.5s infinite steps(8); }
+
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Press+Start+2P&display=swap');
 
-        .main-content {
+        .cbt-root {
+  font-family: 'Press Start 2P', monospace;
           --bg: #060a06;
           --panel: #0c140c;
           --green: #3dff6e;
@@ -581,12 +576,13 @@ export default function App() {
           --red: #ff4d5e;
           --border: #235a34;
           font-family: 'Share Tech Mono', monospace;
-          background: var(--panel);
-          border-left: 2px solid var(--border);
-          display: flex;
-          flex-direction: column;
+          font-family: 'Press Start 2P', monospace;
+          background: var(--bg);
+          color: var(--green);
+          min-height: 100vh;
+          padding: 16px;
+          box-sizing: border-box;
         }
-
         .battle-overlay {
           position: fixed;
           inset: 0;
@@ -611,7 +607,7 @@ export default function App() {
           position: relative;
           font-family: 'Press Start 2P', monospace;
         }
-        .main-content * { box-sizing: border-box; }
+        .battle-overlay * { box-sizing: border-box; }
         .battle-header {
           display: flex;
           justify-content: space-between;
