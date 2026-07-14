@@ -542,10 +542,57 @@ export default function App() {
         </div>
       </aside>
     </div>
-  );
+    <style>{`
+    /* --- CONTAINER DO CENÁRIO (150px de altura) --- */
+    #container-cenario {
+      width: 800px;
+      height: 150px;
+      border: 4px solid #555;
+      position: relative;
+      overflow: hidden;
+      background-image: url('/sprite-bg.png');
+      background-size: 100% 100%;
+      background-position: bottom center;
+      background-repeat: no-repeat;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      margin: 0 auto 16px auto; /* center and space below */
+    }
+    #soldado {
+      width: 100px;
+      height: 100px;
+      position: absolute;
+      bottom: 8px;
+      left: 0;
+      background-repeat: no-repeat;
+      background-size: auto 100%;
+      transition: left 1s linear;
+      image-rendering: pixelated;
+    }
+    /* Sprite animations */
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Press+Start+2P&display=swap');
 
-  <style>{`
-        /* --- CONTAINER DO CENÁRIO (150px de altura) --- */
+        .main-content {
+          --bg: #060a06;
+          --panel: #0c140c;
+          --green: #3dff6e;
+          --green-dim: #1c5c30;
+          --amber: #ffb400;
+          --red: #ff4d5e;
+          --border: #235a34;
+          font-family: 'Share Tech Mono', monospace;
+          background: var(--bg);
+          color: var(--green);
+          flex: 1;
+          padding: 16px;
+        }
+
+        .cbt-wrapper {
+          display: flex;
+          height: 100vh;
+          overflow: hidden;
+        }
+
         #container-cenario {
           width: 800px;
           height: 150px;
@@ -558,9 +605,10 @@ export default function App() {
           background-repeat: no-repeat;
           image-rendering: pixelated;
           image-rendering: crisp-edges;
-          margin: 0 auto 16px auto; /* center and space below */
+          margin: 0 auto 16px auto;
         }
-                #soldado {
+
+        #soldado {
           width: 100px;
           height: 100px;
           position: absolute;
@@ -571,7 +619,7 @@ export default function App() {
           transition: left 1s linear;
           image-rendering: pixelated;
         }
-        /* Sprite animations */
+
         @keyframes anim-idle { from { background-position: 0 0; } to { background-position: -700px 0; } }
         @keyframes anim-walk { from { background-position: 0 0; } to { background-position: -700px 0; } }
         @keyframes anim-run  { from { background-position: 0 0; } to { background-position: -800px 0; } }
@@ -580,10 +628,6 @@ export default function App() {
         #soldado.walk { background-image: url('/Walk.png'); animation: anim-walk 0.8s infinite steps(7); }
         #soldado.run { background-image: url('/Run.png'); animation: anim-run 0.5s infinite steps(8); }
 
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=Press+Start+2P&display=swap');
-
-        .main-content {
-          --bg: #060a06;
           --panel: #0c140c;
           --green: #3dff6e;
           --green-dim: #1c5c30;
