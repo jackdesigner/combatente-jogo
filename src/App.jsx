@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import ProgressSprite from "./ProgressSprite";
-import "./ProgressSprite.css";
+// import ProgressSprite removed – using demo sprite instead
+// CSS for ProgressSprite removed – not needed
 import { Heart, Crosshair, Package, Syringe, Bomb, Zap, Dices, RotateCcw } from "lucide-react";
 import AudioManager from "./audioManager";
 
@@ -273,6 +273,8 @@ export default function App() {
   const logEndRef = useRef(null);
   const mapAudioRef = useRef(null);
   const battleAudioRef = useRef(null);
+  // Ref to demo sprite element
+  const soldadoRef = useRef(null);
 
   // ---------- Bleed helper ----------
   function applyBleed(g) {
@@ -313,6 +315,21 @@ export default function App() {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: "end" });
   }, [game.log]);
+
+  // Sync demo sprite with game position and dice roll
+  useEffect(() => {
+    if (!soldadoRef.current) return;
+    const totalTiles = 40;
+    const pos = Math.min(Math.max(game.position, 1), totalTiles);
+    const pct = ((pos - 1) / (totalTiles - 1)) * 100;
+    const left = `calc(${pct}% - 50px)`; // center 100px sprite
+    soldadoRef.current.style.left = left;
+    // Choose animation based on last roll
+    let animClass = "idle";
+    if (lastRoll >= 4) animClass = "run";
+    else if (lastRoll > 0) animClass = "walk";
+    soldadoRef.current.className = animClass;
+  }, [game.position, lastRoll]);
 
   // Música de fundo: mapa vs batalha
   useEffect(() => {
@@ -507,10 +524,10 @@ export default function App() {
       <div className="cbt-root">
         {/* Sprite demo at very top of the page */}
         <div id="container-cenario">
-          <div id="soldado" className="idle"></div>
+          <div id="soldado" ref={soldadoRef} className="idle"></div>
         </div>
         {/* Original progress sprite (kept below header) */}
-        <ProgressSprite position={game.position} lastRoll={lastRoll} />
+        {/* ProgressSprite removed – demo sprite displayed above */}
       <style>{`
         /* --- CONTAINER DO CENÁRIO (150px de altura) --- */
         #container-cenario {
