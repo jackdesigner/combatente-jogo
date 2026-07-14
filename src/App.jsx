@@ -317,6 +317,37 @@ export default function App() {
   }, [game.log]);
 
   // Sync demo sprite with game position and dice roll
++  // After moving, the sprite shows walk/run according to the roll, then returns to idle.
++  useEffect(() => {
++    if (!soldadoRef.current) return;
++    const totalTiles = 40;
++    const pos = Math.min(Math.max(game.position, 1), totalTiles);
++    const pct = ((pos - 1) / (totalTiles - 1)) * 100;
++    const left = `calc(${pct}% - 50px)`; // center 100px sprite
++    soldadoRef.current.style.left = left;
++
++    // Choose animation based on last roll
++    let animClass = "idle";
++    let duration = 0;
++    if (lastRoll >= 4) {
++      animClass = "run";
++      duration = 600; // 0.5s animation + buffer
++    } else if (lastRoll > 0) {
++      animClass = "walk";
++      duration = 900; // 0.8s animation + buffer
++    }
++    soldadoRef.current.className = animClass;
++
++    // Return to idle after the movement animation finishes
++    if (duration > 0) {
++      const timeout = setTimeout(() => {
++        if (soldadoRef.current) soldadoRef.current.className = "idle";
++      }, duration);
++      return () => clearTimeout(timeout);
++    }
++  }, [game.position, lastRoll]);
+
+  // Sync demo sprite with game position and dice roll
   useEffect(() => {
     if (!soldadoRef.current) return;
     const totalTiles = 40;
