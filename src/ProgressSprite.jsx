@@ -18,7 +18,7 @@ export default function ProgressSprite({ position, lastRoll }) {
   const pos = Math.min(Math.max(position, 1), 40);
   // Percentage across the track (0‑100)
   const pct = ((pos - 1) / (40 - 1)) * 100;
-  const left = `calc(${pct}% - 100px * (${pct} / 100))`;
+  const left = `calc(${pct}% - 50px)`; // center 100px sprite
 
   // Choose animation based on the last dice roll
   let animClass = "idle";
