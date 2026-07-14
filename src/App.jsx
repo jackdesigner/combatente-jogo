@@ -1,0 +1,864 @@
+import React, { useState, useEffect, useRef } from "react";
+import { Heart, Crosshair, Package, Syringe, Bomb, Zap, Dices, RotateCcw } from "lucide-react";
+
+// ============ CONFIG DO JOGO ============
+const FINAL_TILE = 40;
+const WARNING_TILE = 39;
+const START_TILE = 1;
+const QUESTION_TILES = [4, 8, 12, 18, 21, 25, 32, 36];
+const SAVE_KEY = "combatente_save_v1";
+const START_AMMO = 5;
+const START_LIFE = 15;
+
+const DECK_COMPOSITION = [
+  ...Array(6).fill("atirador"),
+  ...Array(3).fill("municao"),
+  ...Array(3).fill("socorro"),
+  ...Array(2).fill("granada"),
+  ...Array(1).fill("adrenalina"),
+];
+
+const CARD_INFO = {
+  atirador: { label: "ATIRADOR INIMIGO", icon: Crosshair, tone: "red" },
+  municao: { label: "MUNIÇÃO", icon: Package, tone: "amber" },
+  socorro: { label: "PRIMEIROS-SOCORROS", icon: Syringe, tone: "green" },
+  granada: { label: "GRANADA", icon: Bomb, tone: "amber" },
+  adrenalina: { label: "ADRENALINA", icon: Zap, tone: "red" },
+};
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function freshGame() {
+  return {
+    position: START_TILE,
+    life: START_LIFE,
+    lifeCap: START_LIFE,
+    ammo: START_AMMO,
+    inventory: { socorro: 0, municao: 0, granada: 0, adrenalina: 0 },
+    deck: shuffle(DECK_COMPOSITION),
+    deckPos: 0,
+    visited: [],
+    gateResolved: false,
+    phase: "map", // map | reveal | battle | win | fail
+    revealCard: undefined,
+    revealContext: null,
+    battle: null,
+    log: ["> Missão iniciada. Escape da área inimiga, fuja para a fronteira."],
+  };
+}
+
+function drawFromDeck(g) {
+  if (g.deckPos >= g.deck.length) return { card: null, deckPos: g.deckPos };
+  return { card: g.deck[g.deckPos], deckPos: g.deckPos + 1 };
+}
+
+function resolveRoll(roll) {
+  if (roll === 1) {
+    const coin = Math.random() < 0.5 ? "cara" : "coroa";
+    if (coin === "cara") return { roll, coin, damage: 0, text: "Tiro evitado! (1 + cara)" };
+    return { roll, coin, damage: 1, text: "Tiro de raspão. (1 + coroa)" };
+  }
+  if (roll === 6) {
+    const coin = Math.random() < 0.5 ? "cara" : "coroa";
+    if (coin === "cara") return { roll, coin, damage: "INSTA", text: "HEADSHOT! Alvo derrotado instantaneamente." };
+    return { roll, coin, damage: 10, text: "Crítico! Dano bônus (+4)." };
+  }
+  return { roll, damage: roll, text: `Dano direto: ${roll}.` };
+}
+
+function stepMovement(g, roll) {
+  let pos = g.position;
+  let visited = g.visited;
+  let log = [...g.log, `> Dado: ${roll}`];
+  let trigger = null;
+
+  for (let i = 0; i < roll; i++) {
+    if (pos >= FINAL_TILE) break;
+    const next = pos + 1;
+    if (!g.gateResolved && next >= WARNING_TILE) {
+      pos = WARNING_TILE;
+      trigger = { type: "gate" };
+      break;
+    }
+    pos = next;
+    if (QUESTION_TILES.includes(pos) && !visited.includes(pos)) {
+      visited = [...visited, pos];
+      trigger = { type: "question" };
+      break;
+    }
+    if (pos === FINAL_TILE) {
+      trigger = { type: "win" };
+      break;
+    }
+  }
+
+  log.push(`> Combatente avança para a casa ${String(pos).padStart(2, "0")}.`);
+  let ng = { ...g, position: pos, visited, log };
+
+  if (trigger?.type === "win") {
+    ng.phase = "win";
+    ng.log = [...ng.log, "> Você atravessou a fronteira! Missão cumprida."];
+    return ng;
+  }
+  if (trigger?.type === "gate") {
+    const draw = drawFromDeck(g);
+    ng.deckPos = draw.deckPos;
+    ng.revealContext = "gate";
+    ng.revealCard = draw.card;
+    ng.phase = "reveal";
+    ng.log = [...ng.log, "> ⚠ Um inimigo guarda o portão da fronteira!"];
+    return ng;
+  }
+  if (trigger?.type === "question") {
+    const draw = drawFromDeck(g);
+    ng.deckPos = draw.deckPos;
+    ng.revealContext = "field";
+    ng.revealCard = draw.card;
+    ng.phase = "reveal";
+    ng.log = [...ng.log, "> Casa misteriosa revelada!"];
+    return ng;
+  }
+  return ng;
+}
+
+function startBattleFromCard(g, card, ctx, coin) {
+  let log = [...g.log];
+  if (card === null) {
+    log.push("> O baralho está vazio. Nada acontece.");
+    if (ctx === "gate") {
+      log.push("> O guardião do portão avança para o combate.");
+      return {
+        ...g,
+        revealCard: undefined,
+        phase: "battle",
+        log,
+        battle: { enemies: [15], enemyIndex: 0, enemyHP: 15, turn: coin === "cara" ? "player" : "enemy", usedSocorro: false, usedMunicao: false, isGate: true },
+      };
+    }
+    return { ...g, revealCard: undefined, phase: "map", log };
+  }
+  if (card === "atirador") {
+    log.push("> Um Atirador Inimigo surge dos arbustos!");
+    const enemies = ctx === "gate" ? [15, 15] : [15];
+    return {
+      ...g,
+      revealCard: undefined,
+      phase: "battle",
+      log,
+      battle: { enemies, enemyIndex: 0, enemyHP: enemies[0], turn: coin === "cara" ? "player" : "enemy", usedSocorro: false, usedMunicao: false, isGate: ctx === "gate" },
+    };
+  }
+  const inventory = { ...g.inventory, [card]: g.inventory[card] + 1 };
+  log.push(`> Item coletado: ${CARD_INFO[card].label}.`);
+  if (ctx === "gate") {
+    log.push("> Com o item guardado, o Combatente enfrenta o guardião do portão.");
+    return {
+      ...g,
+      inventory,
+      revealCard: undefined,
+      phase: "battle",
+      log,
+      battle: { enemies: [15], enemyIndex: 0, enemyHP: 15, turn: coin === "cara" ? "player" : "enemy", usedSocorro: false, usedMunicao: false, isGate: true },
+    };
+  }
+  return { ...g, inventory, revealCard: undefined, phase: "map", log };
+}
+
+function handleEnemyDefeated(g, coinForNext) {
+  const { battle } = g;
+  let log = [...g.log];
+  if (battle.isGate && battle.enemyIndex < battle.enemies.length - 1) {
+    log.push("> Primeiro inimigo derrotado! O segundo avança.");
+    const nextIndex = battle.enemyIndex + 1;
+    return {
+      ...g,
+      log,
+      battle: { ...battle, enemyIndex: nextIndex, enemyHP: battle.enemies[nextIndex], turn: coinForNext === "cara" ? "player" : "enemy", usedSocorro: false, usedMunicao: false },
+    };
+  }
+  log.push("> Inimigo derrotado!");
+  if (battle.isGate) {
+    log.push("> O portão está livre! Avance para a fronteira.");
+    return { ...g, log, phase: "map", battle: null, gateResolved: true };
+  }
+  return { ...g, log, phase: "map", battle: null };
+}
+
+function applyPlayerAttack(g, res) {
+  let ammo = g.ammo - 1;
+  let log = [...g.log, `> Você atira: ${res.text}`];
+  let enemyHP = g.battle.enemyHP;
+  enemyHP = res.damage === "INSTA" ? 0 : Math.max(0, enemyHP - res.damage);
+  let battle = { ...g.battle, enemyHP };
+  let ng = { ...g, ammo, battle, log };
+  if (enemyHP <= 0) {
+    const coin = Math.random() < 0.5 ? "cara" : "coroa";
+    ng = handleEnemyDefeated(ng, coin);
+  } else {
+    ng.battle = { ...battle, turn: "enemy" };
+  }
+  if (ammo <= 0 && ng.phase !== "win") {
+    ng.phase = "fail";
+    ng.log = [...ng.log, "> Sem munição! A missão termina aqui."];
+  }
+  return ng;
+}
+
+function applyEnemyAttack(g, res) {
+  let log = [...g.log, `> Inimigo atira: ${res.text}`];
+  let life = res.damage === "INSTA" ? 0 : Math.max(0, g.life - res.damage);
+  let ng = { ...g, life, log };
+  if (life <= 0) {
+    ng.phase = "fail";
+    ng.log = [...ng.log, "> O Combatente foi derrotado."];
+    return ng;
+  }
+  ng.battle = { ...g.battle, turn: "player" };
+  return ng;
+}
+
+function applyGranada(g, roll, coin) {
+  const inventory = { ...g.inventory, granada: g.inventory.granada - 1 };
+  let log = [...g.log];
+  let enemyHP = g.battle.enemyHP;
+  if (coin === "cara") {
+    log.push(`> Granada jogada: inimigo desvia! (dado ${roll})`);
+  } else {
+    const dmg = roll * 2;
+    enemyHP = Math.max(0, enemyHP - dmg);
+    log.push(`> Granada jogada: ACERTOU! Dano ${dmg} (dado ${roll} x2).`);
+  }
+  let battle = { ...g.battle, enemyHP };
+  let ng = { ...g, inventory, battle, log };
+  if (enemyHP <= 0) {
+    const c2 = Math.random() < 0.5 ? "cara" : "coroa";
+    return handleEnemyDefeated(ng, c2);
+  }
+  ng.battle = { ...battle, turn: "enemy" };
+  return ng;
+}
+
+// ============ COMPONENTE PRINCIPAL ============
+export default function App() {
+  const [game, setGame] = useState(freshGame());
+  const [rolling, setRolling] = useState(false);
+  const [rollDisplay, setRollDisplay] = useState(null);
+  const loadedRef = useRef(false);
+  const logEndRef = useRef(null);
+
+  // carregar save
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SAVE_KEY);
+      if (saved) setGame(JSON.parse(saved));
+    } catch (e) {}
+    loadedRef.current = true;
+  }, []);
+
+  // salvar save
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(game));
+    } catch (e) {}
+  }, [game]);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ block: "end" });
+  }, [game.log]);
+
+  function newGame() {
+    localStorage.removeItem(SAVE_KEY);
+    setGame(freshGame());
+    setRollDisplay(null);
+  }
+
+  function rollMove() {
+    if (game.phase !== "map" || rolling) return;
+    setRolling(true);
+    setTimeout(() => {
+      const roll = 1 + Math.floor(Math.random() * 6);
+      setRollDisplay({ type: "dice", value: roll });
+      setGame((g) => stepMovement(g, roll));
+      setRolling(false);
+    }, 650);
+  }
+
+  function confirmReveal() {
+    const coin = Math.random() < 0.5 ? "cara" : "coroa";
+    setGame((g) => startBattleFromCard(g, g.revealCard, g.revealContext, coin));
+  }
+
+  function playerAttack() {
+    if (game.phase !== "battle" || game.battle.turn !== "player" || rolling) return;
+    setRolling(true);
+    setTimeout(() => {
+      const roll = 1 + Math.floor(Math.random() * 6);
+      const res = resolveRoll(roll);
+      setRollDisplay({ type: "dice", value: roll, coin: res.coin });
+      setGame((g) => applyPlayerAttack(g, res));
+      setRolling(false);
+    }, 650);
+  }
+
+  function enemyAttack() {
+    if (game.phase !== "battle" || game.battle.turn !== "enemy" || rolling) return;
+    setRolling(true);
+    setTimeout(() => {
+      const roll = 1 + Math.floor(Math.random() * 6);
+      const res = resolveRoll(roll);
+      setRollDisplay({ type: "dice", value: roll, coin: res.coin });
+      setGame((g) => applyEnemyAttack(g, res));
+      setRolling(false);
+    }, 650);
+  }
+
+  function useSocorro() {
+    if (game.phase !== "battle" || game.battle.turn !== "player") return;
+    if (game.inventory.socorro <= 0 || game.battle.usedSocorro) return;
+    setGame((g) => {
+      const life = Math.min(g.lifeCap, g.life + 3);
+      const inventory = { ...g.inventory, socorro: g.inventory.socorro - 1 };
+      const log = [...g.log, "> Você usa Primeiros-Socorros (+3 vida). Turno perdido."];
+      return { ...g, life, inventory, log, battle: { ...g.battle, usedSocorro: true, turn: "enemy" } };
+    });
+  }
+
+  function useMunicao() {
+    if (game.phase !== "battle" || game.battle.turn !== "player") return;
+    if (game.inventory.municao <= 0 || game.battle.usedMunicao) return;
+    setGame((g) => {
+      const ammo = g.ammo + 3;
+      const inventory = { ...g.inventory, municao: g.inventory.municao - 1 };
+      const log = [...g.log, "> Você usa Munição (+3 tiros). Turno perdido."];
+      return { ...g, ammo, inventory, log, battle: { ...g.battle, usedMunicao: true, turn: "enemy" } };
+    });
+  }
+
+  function useGranada() {
+    if (game.phase !== "battle" || game.battle.turn !== "player") return;
+    if (game.inventory.granada <= 0 || rolling) return;
+    setRolling(true);
+    setTimeout(() => {
+      const roll = 1 + Math.floor(Math.random() * 6);
+      const coin = Math.random() < 0.5 ? "cara" : "coroa";
+      setRollDisplay({ type: "dice", value: roll, coin });
+      setGame((g) => applyGranada(g, roll, coin));
+      setRolling(false);
+    }, 650);
+  }
+
+  function useAdrenalina() {
+    if (game.inventory.adrenalina <= 0) return;
+    setGame((g) => {
+      const inventory = { ...g.inventory, adrenalina: g.inventory.adrenalina - 1 };
+      const log = [...g.log, "> Adrenalina aplicada! Vida restaurada para 20."];
+      return { ...g, inventory, life: 20, lifeCap: 20, log };
+    });
+  }
+
+  const cardsLeft = game.deck.length - game.deckPos;
+
+  return (
+    <div className="cbt-root">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+        .cbt-root {
+          --bg: #060a06;
+          --panel: #0c140c;
+          --green: #3dff6e;
+          --green-dim: #1c5c30;
+          --amber: #ffb400;
+          --red: #ff4d5e;
+          --border: #235a34;
+          font-family: 'Share Tech Mono', monospace;
+          background: var(--bg);
+          color: var(--green);
+          min-height: 100vh;
+          padding: 16px;
+          box-sizing: border-box;
+        }
+        .cbt-root * { box-sizing: border-box; }
+        .cbt-scanlines {
+          position: relative;
+        }
+        .cbt-scanlines::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: repeating-linear-gradient(
+            180deg,
+            rgba(61,255,110,0.035) 0px,
+            rgba(61,255,110,0.035) 1px,
+            transparent 2px,
+            transparent 3px
+          );
+          pointer-events: none;
+          border-radius: inherit;
+        }
+        .cbt-wrap {
+          max-width: 900px;
+          margin: 0 auto;
+        }
+        .cbt-header {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          border-bottom: 1px solid var(--border);
+          padding-bottom: 10px;
+          margin-bottom: 14px;
+        }
+        .cbt-title {
+          font-family: 'VT323', monospace;
+          font-size: 42px;
+          letter-spacing: 4px;
+          color: var(--green);
+          text-shadow: 0 0 8px rgba(61,255,110,0.55);
+          margin: 0;
+        }
+        .cbt-sub {
+          font-size: 12px;
+          color: var(--green-dim);
+        }
+        .cbt-reset {
+          background: transparent;
+          border: 1px solid var(--border);
+          color: var(--green-dim);
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 11px;
+          padding: 6px 10px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          letter-spacing: 1px;
+        }
+        .cbt-reset:hover { color: var(--red); border-color: var(--red); }
+        .cbt-reset:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+        .cbt-panel {
+          border: 1px solid var(--border);
+          background: var(--panel);
+          padding: 12px 14px;
+          margin-bottom: 12px;
+          position: relative;
+        }
+        .cbt-panel-label {
+          font-size: 11px;
+          letter-spacing: 3px;
+          color: var(--green-dim);
+          margin-bottom: 8px;
+          display: block;
+        }
+
+        .cbt-status-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        @media (min-width: 620px) {
+          .cbt-status-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        .cbt-stat {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+        }
+        .cbt-bar-outer {
+          flex: 1;
+          height: 12px;
+          border: 1px solid var(--border);
+          background: #081208;
+        }
+        .cbt-bar-inner {
+          height: 100%;
+          background: linear-gradient(90deg, var(--green-dim), var(--green));
+          transition: width 0.35s ease;
+        }
+        .cbt-bar-inner.danger { background: linear-gradient(90deg, #6e0f18, var(--red)); }
+
+        .cbt-inventory {
+          display: flex;
+          gap: 14px;
+          flex-wrap: wrap;
+          margin-top: 10px;
+        }
+        .cbt-inv-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          border: 1px solid var(--border);
+          padding: 4px 8px;
+          background: #081208;
+        }
+        .cbt-inv-item button {
+          background: transparent;
+          border: 1px solid var(--green-dim);
+          color: var(--green);
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 10px;
+          padding: 2px 6px;
+          cursor: pointer;
+          margin-left: 4px;
+        }
+        .cbt-inv-item button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .cbt-inv-item button:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
+        .cbt-inv-item button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+        .cbt-map-grid {
+          display: grid;
+          grid-template-columns: repeat(8, 1fr);
+          gap: 4px;
+        }
+        .cbt-tile {
+          aspect-ratio: 1;
+          border: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 11px;
+          color: var(--green-dim);
+          position: relative;
+        }
+        .cbt-tile.current {
+          background: var(--green);
+          color: #041004;
+          font-weight: bold;
+          box-shadow: 0 0 10px rgba(61,255,110,0.7);
+        }
+        .cbt-tile.question { color: var(--amber); border-color: var(--amber); }
+        .cbt-tile.question.visited { color: var(--green-dim); border-color: var(--border); opacity: 0.5; }
+        .cbt-tile.warning { color: var(--red); border-color: var(--red); }
+        .cbt-tile.final { color: var(--amber); border-color: var(--amber); font-weight: bold; }
+        .cbt-tile.passed { color: var(--green-dim); opacity: 0.6; }
+
+        .cbt-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 12px;
+        }
+        .cbt-btn {
+          background: transparent;
+          border: 1px solid var(--green);
+          color: var(--green);
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 13px;
+          padding: 10px 16px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          letter-spacing: 1px;
+        }
+        .cbt-btn:hover:not(:disabled) { background: rgba(61,255,110,0.12); }
+        .cbt-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .cbt-btn:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+        .cbt-btn.amber { border-color: var(--amber); color: var(--amber); }
+        .cbt-btn.amber:hover:not(:disabled) { background: rgba(255,180,0,0.12); }
+        .cbt-btn.red { border-color: var(--red); color: var(--red); }
+        .cbt-btn.red:hover:not(:disabled) { background: rgba(255,77,94,0.12); }
+
+        .cbt-roll-indicator {
+          font-family: 'VT323', monospace;
+          font-size: 28px;
+          color: var(--amber);
+          min-height: 34px;
+        }
+        .cbt-rolling { animation: cbt-spin 0.15s linear infinite; display: inline-block; }
+        @keyframes cbt-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .cbt-log {
+          height: 140px;
+          overflow-y: auto;
+          font-size: 12px;
+          line-height: 1.6;
+          color: var(--green-dim);
+        }
+        .cbt-log div:last-child { color: var(--green); }
+
+        .cbt-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.75);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 50;
+          padding: 16px;
+        }
+        .cbt-modal {
+          background: var(--panel);
+          border: 1px solid var(--green);
+          box-shadow: 0 0 30px rgba(61,255,110,0.3);
+          padding: 28px;
+          max-width: 380px;
+          width: 100%;
+          text-align: center;
+        }
+        .cbt-modal-icon { margin-bottom: 12px; }
+        .cbt-modal-title {
+          font-family: 'VT323', monospace;
+          font-size: 26px;
+          letter-spacing: 2px;
+          margin-bottom: 10px;
+        }
+        .cbt-modal-text { font-size: 13px; color: var(--green-dim); margin-bottom: 18px; }
+
+        .cbt-battle-vs {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 10px;
+        }
+        .cbt-combatant { flex: 1; }
+        .cbt-combatant-label { font-size: 11px; letter-spacing: 2px; color: var(--green-dim); margin-bottom: 4px; }
+        .cbt-turn-flag {
+          font-family: 'VT323', monospace;
+          font-size: 20px;
+          text-align: center;
+          padding: 6px;
+          margin: 10px 0;
+          border: 1px dashed var(--border);
+          color: var(--amber);
+          letter-spacing: 2px;
+        }
+
+        .cbt-end-screen {
+          text-align: center;
+          padding: 40px 20px;
+        }
+        .cbt-end-title {
+          font-family: 'VT323', monospace;
+          font-size: 48px;
+          letter-spacing: 3px;
+          margin-bottom: 12px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .cbt-rolling { animation: none; }
+          .cbt-bar-inner { transition: none; }
+        }
+      `}</style>
+
+      <div className="cbt-wrap">
+        <div className="cbt-header">
+          <div>
+            <h1 className="cbt-title">COMBATENTE</h1>
+            <div className="cbt-sub">PROTÓTIPO DE MECÂNICAS · v0.1 · sem assets finais</div>
+          </div>
+          <button className="cbt-reset" onClick={newGame}>
+            <RotateCcw size={12} /> NOVO JOGO
+          </button>
+        </div>
+
+        {/* STATUS */}
+        <div className="cbt-panel cbt-scanlines">
+          <span className="cbt-panel-label">STATUS</span>
+          <div className="cbt-status-grid">
+            <div className="cbt-stat">
+              <Heart size={16} color="var(--red)" />
+              <div className="cbt-bar-outer">
+                <div
+                  className={`cbt-bar-inner ${game.life <= 5 ? "danger" : ""}`}
+                  style={{ width: `${(game.life / game.lifeCap) * 100}%` }}
+                />
+              </div>
+              <span>{game.life}/{game.lifeCap}</span>
+            </div>
+            <div className="cbt-stat">
+              <Crosshair size={16} color="var(--amber)" />
+              <span>MUNIÇÃO: {game.ammo}</span>
+            </div>
+            <div className="cbt-stat">
+              <span>CASA: {String(game.position).padStart(2, "0")}/40</span>
+            </div>
+            <div className="cbt-stat">
+              <span>BARALHO: {cardsLeft} restantes</span>
+            </div>
+          </div>
+
+          <div className="cbt-inventory">
+            <div className="cbt-inv-item">
+              <Syringe size={14} color="var(--green)" /> SOCORRO x{game.inventory.socorro}
+            </div>
+            <div className="cbt-inv-item">
+              <Package size={14} color="var(--amber)" /> MUNIÇÃO x{game.inventory.municao}
+            </div>
+            <div className="cbt-inv-item">
+              <Bomb size={14} color="var(--amber)" /> GRANADA x{game.inventory.granada}
+            </div>
+            <div className="cbt-inv-item">
+              <Zap size={14} color="var(--red)" /> ADRENALINA x{game.inventory.adrenalina}
+              <button disabled={game.inventory.adrenalina <= 0 || game.phase === "fail" || game.phase === "win"} onClick={useAdrenalina}>
+                USAR
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* MAPA */}
+        {(game.phase === "map" || game.phase === "battle" || game.phase === "reveal") && (
+          <div className="cbt-panel cbt-scanlines">
+            <span className="cbt-panel-label">MAPA</span>
+            <div className="cbt-map-grid">
+              {Array.from({ length: FINAL_TILE }, (_, i) => i + 1).map((tile) => {
+                const isCurrent = tile === game.position;
+                const isQuestion = QUESTION_TILES.includes(tile);
+                const isVisited = game.visited.includes(tile);
+                const isWarning = tile === WARNING_TILE;
+                const isFinal = tile === FINAL_TILE;
+                const isPassed = tile < game.position;
+                let cls = "cbt-tile";
+                if (isCurrent) cls += " current";
+                else if (isWarning) cls += " warning";
+                else if (isFinal) cls += " final";
+                else if (isQuestion) cls += ` question${isVisited ? " visited" : ""}`;
+                else if (isPassed) cls += " passed";
+                return (
+                  <div key={tile} className={cls}>
+                    {isFinal ? "FIM" : isWarning ? "!" : isQuestion && !isVisited ? "?" : String(tile).padStart(2, "0")}
+                  </div>
+                );
+              })}
+            </div>
+
+            {game.phase === "map" && (
+              <div className="cbt-actions">
+                <button className="cbt-btn" onClick={rollMove} disabled={rolling}>
+                  <Dices size={16} className={rolling ? "cbt-rolling" : ""} /> ROLAR DADO
+                </button>
+                <div className="cbt-roll-indicator">
+                  {rolling ? "rolando..." : rollDisplay?.type === "dice" ? `🎲 ${rollDisplay.value}` : ""}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* REVEAL MODAL */}
+        {game.phase === "reveal" && (
+          <div className="cbt-modal-overlay">
+            <div className="cbt-modal">
+              {game.revealCard ? (
+                <>
+                  <div className="cbt-modal-icon">
+                    {(() => {
+                      const Icon = CARD_INFO[game.revealCard].icon;
+                      return <Icon size={40} color={`var(--${CARD_INFO[game.revealCard].tone})`} />;
+                    })()}
+                  </div>
+                  <div className="cbt-modal-title">{CARD_INFO[game.revealCard].label}</div>
+                  <div className="cbt-modal-text">
+                    {game.revealContext === "gate" ? "Carta revelada no portão da fronteira." : "Uma carta foi revelada na casa misteriosa."}
+                  </div>
+                </>
+              ) : (
+                <div className="cbt-modal-title">BARALHO VAZIO</div>
+              )}
+              <button className="cbt-btn amber" onClick={confirmReveal}>
+                CONTINUAR
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* BATALHA */}
+        {game.phase === "battle" && (
+          <div className="cbt-panel cbt-scanlines">
+            <span className="cbt-panel-label">
+              {game.battle.isGate ? `COMBATE DE CHEFE — INIMIGO ${game.battle.enemyIndex + 1}/${game.battle.enemies.length}` : "COMBATE"}
+            </span>
+
+            <div className="cbt-battle-vs">
+              <div className="cbt-combatant">
+                <div className="cbt-combatant-label">VOCÊ</div>
+                <div className="cbt-bar-outer">
+                  <div className={`cbt-bar-inner ${game.life <= 5 ? "danger" : ""}`} style={{ width: `${(game.life / game.lifeCap) * 100}%` }} />
+                </div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>{game.life}/{game.lifeCap} HP</div>
+              </div>
+              <div className="cbt-combatant">
+                <div className="cbt-combatant-label">INIMIGO</div>
+                <div className="cbt-bar-outer">
+                  <div className="cbt-bar-inner danger" style={{ width: `${(game.battle.enemyHP / 15) * 100}%` }} />
+                </div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>{game.battle.enemyHP}/15 HP</div>
+              </div>
+            </div>
+
+            <div className="cbt-turn-flag">{game.battle.turn === "player" ? "▶ SEU TURNO" : "▶ TURNO DO INIMIGO"}</div>
+
+            <div className="cbt-roll-indicator">
+              {rolling
+                ? "rolando..."
+                : rollDisplay?.type === "dice"
+                ? `🎲 ${rollDisplay.value}${rollDisplay.coin ? ` · 🪙 ${rollDisplay.coin}` : ""}`
+                : ""}
+            </div>
+
+            {game.battle.turn === "player" ? (
+              <div className="cbt-actions">
+                <button className="cbt-btn" onClick={playerAttack} disabled={rolling}>
+                  <Crosshair size={16} /> ATIRAR (-1 munição)
+                </button>
+                <button className="cbt-btn" onClick={useSocorro} disabled={rolling || game.inventory.socorro <= 0 || game.battle.usedSocorro}>
+                  <Syringe size={16} /> SOCORRO (+3 vida)
+                </button>
+                <button className="cbt-btn amber" onClick={useMunicao} disabled={rolling || game.inventory.municao <= 0 || game.battle.usedMunicao}>
+                  <Package size={16} /> MUNIÇÃO (+3 tiros)
+                </button>
+                <button className="cbt-btn red" onClick={useGranada} disabled={rolling || game.inventory.granada <= 0}>
+                  <Bomb size={16} /> GRANADA
+                </button>
+              </div>
+            ) : (
+              <div className="cbt-actions">
+                <button className="cbt-btn red" onClick={enemyAttack} disabled={rolling}>
+                  <Crosshair size={16} /> INIMIGO ATACA
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* FIM DE JOGO */}
+        {(game.phase === "win" || game.phase === "fail") && (
+          <div className="cbt-panel cbt-scanlines cbt-end-screen">
+            <div className="cbt-end-title" style={{ color: game.phase === "win" ? "var(--green)" : "var(--red)" }}>
+              {game.phase === "win" ? "MISSÃO CUMPRIDA" : "MISSÃO FRACASSADA"}
+            </div>
+            <div className="cbt-modal-text">
+              {game.phase === "win" ? "Parabéns, soldado. Sua equipe te espera." : "O Combatente não sobreviveu ao caminho de volta."}
+            </div>
+            <button className="cbt-btn" onClick={newGame}>
+              <RotateCcw size={16} /> JOGAR NOVAMENTE
+            </button>
+          </div>
+        )}
+
+        {/* LOG */}
+        <div className="cbt-panel cbt-scanlines">
+          <span className="cbt-panel-label">REGISTRO</span>
+          <div className="cbt-log">
+            {game.log.slice(-40).map((line, i) => (
+              <div key={i}>{line}</div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
