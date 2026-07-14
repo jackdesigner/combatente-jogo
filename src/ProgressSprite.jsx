@@ -1,4 +1,8 @@
 import React from "react";
+import idleImg from "../Idle.png";
+import walkImg from "../Walk.png";
+import runImg from "../Run.png";
+import bgImg from "../sprite-bg.png";
 
 /**
  * ProgressSprite component displays the animated soldier over the static background
@@ -25,11 +29,14 @@ export default function ProgressSprite({ position, lastRoll }) {
   }
 
   return (
-    <div id="progress-sprite" className="sprite-container">
+    <div id="progress-sprite" className="sprite-container" style={{ backgroundImage: `url(${bgImg})` }}>
       <div
         id="soldado"
         className={animClass}
-        style={{ left }}
+        style={{
+          left,
+          backgroundImage: `url(${animClass === 'idle' ? idleImg : animClass === 'walk' ? walkImg : runImg})`,
+        }}
       ></div>
     </div>
   );

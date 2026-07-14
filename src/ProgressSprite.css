@@ -3,7 +3,7 @@
   position: relative;
   width: 800px; /* same as original container width */
   height: 150px; /* matches sprite-bg height */
-  background-image: url('../sprite-bg.png');
+  /* background image set via inline style */
   background-size: 100% 100%;
   background-position: bottom center;
   overflow: hidden;
@@ -20,17 +20,17 @@
 }
 
 #soldado.idle {
-  background-image: url('../Idle.png');
+  /* background image set via inline style */
   animation: anim-idle 1.2s infinite steps(7);
 }
 
 #soldado.walk {
-  background-image: url('../Walk.png');
+  /* background image set via inline style */
   animation: anim-walk 0.8s infinite steps(7);
 }
 
 #soldado.run {
-  background-image: url('../Run.png');
+  /* background image set via inline style */
   animation: anim-run 0.5s infinite steps(8);
 }
 
