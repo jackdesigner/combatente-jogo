@@ -89,5 +89,19 @@ class AudioManager {
     a.currentTime = 0;
     a.play().catch(() => {});
   }
+
+  // Play SFX at a reduced volume (scale 0-1 relative to current SFX volume)
+  playSfxAt(name, scale = 1) {
+    const a = this.sfx[name];
+    if (!a) return;
+    const originalVol = a.volume;
+    a.volume = Math.max(0, Math.min(1, originalVol * scale));
+    a.currentTime = 0;
+    a.play().catch(() => {});
+    // Restore after playback (fire-and-forget, small timeout to ensure start)
+    setTimeout(() => {
+      a.volume = originalVol;
+    }, 100);
+  }
 }
 export default AudioManager;

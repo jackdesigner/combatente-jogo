@@ -278,7 +278,8 @@ export default function App() {
       const bleedTurns = g.bleedTurns - 1;
       let ng = { ...g, life, bleedTurns, log };
       if (life <= 0 && ng.phase !== "fail") {
-        ng.phase = "fail";
+      ng.phase = "fail";
+    AudioManager.getInstance().playSfx('morreu');
         ng.log = [...ng.log, "> O Combatente sucumbiu aos ferimentos de sangramento."];
       }
       return ng;
@@ -411,6 +412,7 @@ export default function App() {
   function enemyAttack() {
     if (game.phase !== "battle" || game.battle.turn !== "enemy" || rolling) return;
     setRolling(true);
+    AudioManager.getInstance().playSfxAt('tiro-curto', 0.5);
     setTimeout(() => {
       const roll = 1 + Math.floor(Math.random() * 6);
       const res = resolveRoll(roll);
