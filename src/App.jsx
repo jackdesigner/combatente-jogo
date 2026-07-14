@@ -249,6 +249,8 @@ function applyGranada(g, roll, coin) {
     enemyHP = Math.max(0, enemyHP - dmg);
     log.push(`> Granada jogada: ACERTOU! Dano ${dmg} (dado ${roll} x2).`);
   }
+  // Play grenade sound effect
+  AudioManager.getInstance().playSfx('granada');
   let battle = { ...g.battle, enemyHP };
   let ng = { ...g, inventory, battle, log };
   if (enemyHP <= 0) {
@@ -1299,6 +1301,8 @@ function BattleOverlay({ game, setGame, playerAttack, enemyAttack, useGranada, u
                 </div>
                 <div style={{ fontSize: '8px', color: 'var(--green-dim)', marginTop: '2px' }}>HP: {game.life} / {game.lifeCap}</div>
               </div>
+              {/* Progress Sprite */}
+              <div className={`progress-sprite ${game.ammo <= 3 ? "walk" : game.ammo > 3 ? "run" : "idle"}`} />
 
               {/* Enemy Status Card */}
               <div className="battle-status-overlay-card enemy">
