@@ -1141,10 +1141,28 @@ export default function App() {
                 <button className="cbt-btn" onClick={rollMove} disabled={rolling}>
                   <Dices size={16} className={rolling ? "cbt-rolling" : ""} /> ROLAR DADO
                 </button>
-<button className="cbt-btn amber" onClick={playCardFromMap} disabled={rolling || !game.canPlayCard}>USAR CARTA</button>
+                <button className="cbt-btn amber" onClick={playCardFromMap} disabled={rolling || !game.canPlayCard}>USAR CARTA</button>
                 <div className="cbt-roll-indicator">
                   {rolling ? "rolando..." : rollDisplay?.type === "dice" ? `🎲 ${rollDisplay.value}` : ""}
                 </div>
+
+                {/* MAP CARD PICKER MODAL */}
+                {game.showMapCardPicker && (
+                  <div className="cbt-modal-overlay">
+                    <div className="cbt-modal">
+                      <div className="cbt-modal-title">Usar Carta</div>
+                      <div className="cbt-inventory-list">
+                        {Object.entries(game.inventory).filter(([k, v]) => v > 0).map(([k, v]) => (
+                          <div key={k} className="cbt-inventory-item">
+                            <span>{CARD_INFO[k].label} ({v})</span>
+                            <button className="cbt-btn" onClick={() => pickMapCard(k)}>Usar</button>
+                          </div>
+                        ))}
+                      </div>
+                      <button className="cbt-btn amber" onClick={() => setGame(g => ({...g, showMapCardPicker: false}))}>Cancelar</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
